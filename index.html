@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python Playground</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/comment/comment.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/dialog/dialog.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/dialog/dialog.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/searchcursor.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/search.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/jump-to-line.min.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            height: 100%;
+            background: #1e1e2e;
+            color: #cdd6f4;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+        }
+
+        /* ── Top bar ── */
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #181825;
+            border-bottom: 1px solid #313244;
+            padding: 0 20px;
+            height: 50px;
+            flex-shrink: 0;
+        }
+
+        .topbar h1 {
+            font-size: 15px;
+            font-weight: 600;
+            color: #cba6f7;
+            letter-spacing: 0.4px;
+        }
+
+        .btn-group { display: flex; gap: 10px; }
+
+        button {
+            padding: 6px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            transition: background 0.15s, opacity 0.15s;
+        }
+
+        #run-btn { background: #a6e3a1; color: #1e1e2e; }
+        #run-btn:hover:not(:disabled) { background: #8fd08a; }
+        #run-btn:disabled { background: #45475a; color: #6c7086; cursor: not-allowed; }
+
+        #save-btn { background: #89b4fa; color: #1e1e2e; }
+        #save-btn:hover { background: #74a8f7; }
+
+        #export-btn { background: #fab387; color: #1e1e2e; }
+        #export-btn:hover { background: #e8995e; }
+
+        #import-btn { background: #a6adc8; color: #1e1e2e; }
+        #import-btn:hover { background: #8f95b0; }
+
+        /* ── Split workspace ── */
+        .workspace {
+            display: flex;
+            height: calc(100vh - 50px);
+        }
+
+        /* shared pane styles */
+        .pane-editor,
+        .pane-output {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            min-width: 0;
+        }
+
+        .pane-editor { border-right: 2px solid #313244; border-left: 2px solid #313244; }
+
+        .pane-label {
+            background: #181825;
+            color: #6c7086;
+            font-size: 11px;
+            font-family: monospace;
+            padding: 5px 14px;
+            border-bottom: 1px solid #313244;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            flex-shrink: 0;
+        }
+
+        /* ── CodeMirror fills editor pane ── */
+        .editor-wrap {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .CodeMirror {
+            position: absolute;
+            inset: 0;
+            height: 100% !important;
+            font-size: 14px;
+            line-height: 1.65;
+            font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+        }
+
+        /* ── Whitespace markers ── */
+        .cm-tab-char, .cm-space-char {
+            color: rgba(147, 153, 178, 0.10);
+            font-style: normal;
+        }
+        /* Tab arrow via CSS — preserves tab width */
+        .cm-tab {
+            display: inline-block;
+            position: relative;
+        }
+        .cm-tab::before {
+            content: '\2192'; /* → */
+            position: absolute;
+            left: 2px;
+            color: rgba(147, 153, 178, 0.45);
+            pointer-events: none;
+            font-style: normal;
+        }
+
+        /* ── Indent guides ── */
+        .cm-indent-guide {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 1px;
+            background: rgba(147, 153, 178, 0.15);
+            pointer-events: none;
+        }
+
+        /* ── Console / output pane ── */
+        .terminal {
+            flex: 1;
+            background: #11111b;
+            color: #cdd6f4;
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            padding: 16px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .meta-bar {
+            background: #181825;
+            border-top: 1px solid #313244;
+            padding: 5px 14px;
+            font-size: 11px;
+            font-family: monospace;
+            color: #6c7086;
+            flex-shrink: 0;
+            min-height: 26px;
+        }
+
+        /* ── Files pane ── */
+        .pane-files {
+            width: 190px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            background: #181825;
+            border-right: 2px solid #313244;
+            overflow: hidden;
+        }
+
+        .files-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 5px 8px;
+            border-bottom: 1px solid #313244;
+            flex-shrink: 0;
+        }
+
+        .files-toolbar span {
+            font-size: 11px;
+            font-family: monospace;
+            color: #6c7086;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #new-file-btn {
+            background: #313244;
+            color: #cdd6f4;
+            border: none;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 16px;
+            line-height: 1;
+            cursor: pointer;
+        }
+        #new-file-btn:hover { background: #45475a; }
+
+        .files-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 4px 0;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            padding: 5px 8px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin: 2px 5px;
+            gap: 5px;
+            overflow: hidden;
+        }
+        .file-item:hover { background: #313244; }
+        .file-item.active { background: #313244; border-left: 2px solid #cba6f7; padding-left: 6px; }
+
+        .file-item-name {
+            flex: 1;
+            font-size: 12px;
+            font-family: monospace;
+            color: #cdd6f4;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .file-item.active .file-item-name { color: #cba6f7; }
+
+        .file-item-name input {
+            background: #11111b;
+            border: 1px solid #89b4fa;
+            color: #cdd6f4;
+            font-family: monospace;
+            font-size: 12px;
+            width: 100%;
+            padding: 1px 4px;
+            border-radius: 3px;
+            outline: none;
+        }
+
+        .file-del-btn {
+            background: none;
+            border: none;
+            color: #6c7086;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 0 2px;
+            flex-shrink: 0;
+            opacity: 0;
+            line-height: 1;
+        }
+        .file-item:hover .file-del-btn { opacity: 1; }
+        .file-del-btn:hover { color: #f38ba8; }
+    </style>
+</head>
+<body>
+
+    <!-- Top bar -->
+    <div class="topbar">
+        <h1>&#x1F40D; Python Playground</h1>
+        <div class="btn-group">
+            <button id="save-btn">&#x1F4BE; Save .py</button>
+                <button id="export-btn">&#x2B06; Export</button>
+                <button id="import-btn">&#x2B07; Import</button>
+                <input type="file" id="import-input" accept=".json" style="display:none">
+            <button id="run-btn" disabled>Loading...</button>
+        </div>
+    </div>
+
+    <!-- Split workspace -->
+    <div class="workspace">
+
+        <!-- Left: File browser -->
+        <div class="pane-files">
+            <div class="files-toolbar">
+                <span>Files</span>
+                <button id="new-file-btn" title="New file">+</button>
+            </div>
+            <div class="files-list" id="files-list"></div>
+        </div>
+
+        <!-- Middle: Editor -->
+        <div class="pane-editor">
+            <div class="pane-label" id="editor-label">editor</div>
+            <div class="editor-wrap">
+                <textarea id="code-editor"></textarea>
+            </div>
+        </div>
+
+        <!-- Right: Output -->
+        <div class="pane-output">
+            <div class="pane-label">console output</div>
+            <div id="console" class="terminal">Loading Python + matplotlib + numpy...</div>
+            <div id="metrics-panel" class="meta-bar"></div>
+        </div>
+
+    </div>
+
+    <!-- Inline Pyodide worker -->
+    <script id="worker-code" type="text/javascript-worker">
+        importScripts("https://cdn.jsdelivr.net/pyodide/v0.26.0/full/pyodide.js");
+
+        let pyodide;
+
+        // Injected before every user script: hooks plt.show() to capture figures
+        const PLOT_SETUP = `
+import io as _io, base64 as _b64
+import sys as _sys, builtins as _builtins
+
+# Intercept sys.exit / exit() / quit() so they don't kill the worker
+class _GracefulExit(Exception): pass
+def _safe_exit(code=0): raise _GracefulExit(code)
+_sys.exit = _safe_exit
+_builtins.exit = _safe_exit
+_builtins.quit = _safe_exit
+
+_plot_images = []
+try:
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as _plt
+    def _capture_show(*a, **kw):
+        for i in _plt.get_fignums():
+            fig = _plt.figure(i)
+            buf = _io.BytesIO()
+            fig.savefig(buf, format='png', bbox_inches='tight', facecolor=fig.get_facecolor())
+            buf.seek(0)
+            _plot_images.append(_b64.b64encode(buf.read()).decode())
+        _plt.close('all')
+    _plt.show = _capture_show
+except ImportError:
+    pass
+`;
+
+        // Run after user script: capture any figures not explicitly shown
+        const PLOT_CAPTURE = `
+try:
+    import matplotlib.pyplot as _plt
+    if _plt.get_fignums():
+        _capture_show()
+except Exception:
+    pass
+`;
+
+        async function initPyodide() {
+            pyodide = await loadPyodide({
+                stdout: (text) => { self.postMessage({ type: "PRINT", payload: text }); },
+                stderr: (text) => { self.postMessage({ type: "PRINT", payload: text }); }
+            });
+            await pyodide.loadPackage(['matplotlib', 'numpy']);
+            self.postMessage({ type: "READY" });
+        }
+
+        initPyodide();
+
+        self.onmessage = async (event) => {
+            const { type, code } = event.data;
+            if (type === "RUN_CODE") {
+                let isError = false;
+                let errorMsg = '';
+
+                try {
+                    await pyodide.runPythonAsync(PLOT_SETUP);
+                    await pyodide.runPythonAsync(code);
+                } catch (error) {
+                    if (error.message && error.message.includes('_GracefulExit')) {
+                        // exit() / sys.exit() called — treat as clean completion
+                    } else {
+                        isError = true;
+                        errorMsg = error.message;
+                    }
+                }
+
+                // Always attempt plot capture (may have figures before an exit/error)
+                try { await pyodide.runPythonAsync(PLOT_CAPTURE); } catch(e) {}
+                const imgList = pyodide.globals.get('_plot_images');
+                if (imgList) {
+                    for (const b64 of imgList.toJs()) {
+                        self.postMessage({ type: "IMAGE", payload: b64 });
+                    }
+                    imgList.destroy();
+                }
+
+                if (isError) {
+                    self.postMessage({ type: "ERROR", payload: errorMsg });
+                } else {
+                    const memBytes = pyodide._module.HEAP8.buffer.byteLength;
+                    self.postMessage({ type: "OUTPUT", memoryBytes: memBytes });
+                }
+            }
+        };
+    </script>
+
+    <script>
+        const runBtn       = document.getElementById('run-btn');
+        const saveBtn      = document.getElementById('save-btn');
+        const consoleOut   = document.getElementById('console');
+        const metricsPanel = document.getElementById('metrics-panel');
+        const filesList    = document.getElementById('files-list');
+        const newFileBtn   = document.getElementById('new-file-btn');
+        const editorLabel  = document.getElementById('editor-label');
+
+        // ── CodeMirror setup ──
+        const editor = CodeMirror.fromTextArea(document.getElementById('code-editor'), {
+            mode: 'python',
+            theme: 'dracula',
+            lineNumbers: true,
+            indentUnit: 4,
+            tabSize: 4,
+            indentWithTabs: false,
+            lineWrapping: false,
+            autofocus: true,
+            matchBrackets: true,
+            styleActiveLine: true,
+            specialChars: /[ ]|[\u0000-\u0019\u00ad\u200b-\u200f\u2028\u2029\ufeff]/,
+            specialCharPlaceholder: function(ch) {
+                const el = document.createElement('span');
+                if (ch === '\t') {
+                    el.className = 'cm-tab-char';
+                    el.textContent = '\u2192'; // →
+                } else if (ch === ' ') {
+                    el.className = 'cm-space-char';
+                    el.textContent = '\u00b7'; // ·
+                } else {
+                    el.className = 'cm-special-char';
+                    el.textContent = '\u2022';
+                }
+                return el;
+            },
+            extraKeys: { "Ctrl-/": "toggleComment" }
+        });
+        editor.setSize('100%', '100%');
+
+        // ── VS Code-style indent guides ──
+        function addIndentGuides(cm, lineHandle, elt) {
+            const text = lineHandle.text;
+            const indentUnit = cm.getOption('indentUnit');
+            const tabSize    = cm.getOption('tabSize');
+            // Count leading whitespace in visual columns (tabs expand to tabSize)
+            let col = 0;
+            for (let i = 0; i < text.length; i++) {
+                if (text[i] === ' ')       col++;
+                else if (text[i] === '\t') col = Math.ceil((col + 1) / tabSize) * tabSize;
+                else break;
+            }
+            const levels = Math.floor(col / indentUnit);
+            if (levels === 0) return;
+            const charWidth  = cm.defaultCharWidth();
+            const gutterWidth = cm.getGutterElement().offsetWidth;
+            elt.style.position = 'relative';
+            for (let i = 0; i < levels; i++) {
+                const guide = document.createElement('div');
+                guide.className = 'cm-indent-guide';
+                guide.style.left = (gutterWidth + i * indentUnit * charWidth + 4) + 'px';
+                elt.appendChild(guide);
+            }
+        }
+        editor.on('renderLine', addIndentGuides);
+        editor.refresh();
+
+        // ── File storage ──
+        const STORAGE_KEY = 'py_playground_v2';
+        const DEFAULT_CODE = `import matplotlib.pyplot as plt\nimport numpy as np\n\nx = np.linspace(0, 2 * np.pi, 100)\n\nplt.figure(figsize=(7, 3.5))\nplt.plot(x, np.sin(x), label='sin(x)', color='#89b4fa')\nplt.plot(x, np.cos(x), label='cos(x)', color='#f38ba8')\nplt.legend()\nplt.title('Trigonometric Functions')\nplt.tight_layout()\nplt.show()\n`;
+
+        function uid() { return Math.random().toString(36).slice(2, 10); }
+
+        function loadStorage() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (raw) return JSON.parse(raw);
+            } catch(e) {}
+            // Migrate old single-file storage
+            const oldCode = localStorage.getItem('py_playground_code');
+            const id = uid();
+            return { files: [{ id, name: 'script.py', code: oldCode || DEFAULT_CODE }], activeId: id };
+        }
+
+        function saveStorage() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        }
+
+        let state = loadStorage();
+        if (!state.files.find(f => f.id === state.activeId)) {
+            state.activeId = state.files[0]?.id || null;
+        }
+
+        function activeFile() {
+            return state.files.find(f => f.id === state.activeId) || null;
+        }
+
+        function flushEditorToState() {
+            const f = activeFile();
+            if (f) f.code = editor.getValue();
+        }
+
+        function switchTo(id) {
+            if (id === state.activeId) return;
+            flushEditorToState();
+            state.activeId = id;
+            const f = activeFile();
+            editor.setValue(f.code);
+            editor.focus();
+            saveStorage();
+            renderFiles();
+        }
+
+        function renderFiles() {
+            const f = activeFile();
+            editorLabel.textContent = 'editor — ' + (f ? f.name : '');
+            filesList.innerHTML = '';
+            for (const file of state.files) {
+                const item = document.createElement('div');
+                item.className = 'file-item' + (file.id === state.activeId ? ' active' : '');
+                item.dataset.id = file.id;
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'file-item-name';
+                nameSpan.textContent = file.name;
+                nameSpan.title = file.name;
+
+                nameSpan.addEventListener('dblclick', (e) => {
+                    e.stopPropagation();
+                    startRename(file, nameSpan);
+                });
+
+                const delBtn = document.createElement('button');
+                delBtn.className = 'file-del-btn';
+                delBtn.textContent = '\u2715';
+                delBtn.title = 'Delete file';
+                delBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (state.files.length === 1) return;
+                    if (!confirm(`Delete "${file.name}"?`)) return;
+                    state.files = state.files.filter(x => x.id !== file.id);
+                    if (state.activeId === file.id) {
+                        state.activeId = state.files[0].id;
+                        editor.setValue(state.files[0].code);
+                    }
+                    saveStorage();
+                    renderFiles();
+                });
+
+                item.appendChild(nameSpan);
+                item.appendChild(delBtn);
+                item.addEventListener('click', () => switchTo(file.id));
+                filesList.appendChild(item);
+            }
+        }
+
+        function startRename(file, nameSpan) {
+            const input = document.createElement('input');
+            input.value = file.name;
+            nameSpan.textContent = '';
+            nameSpan.appendChild(input);
+            input.focus();
+            input.select();
+            function commit() {
+                const newName = input.value.trim() || file.name;
+                file.name = newName;
+                saveStorage();
+                renderFiles();
+            }
+            input.addEventListener('blur', commit);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') input.blur();
+                if (e.key === 'Escape') { input.value = file.name; input.blur(); }
+            });
+        }
+
+        // Initial load
+        const initFile = activeFile();
+        if (initFile) editor.setValue(initFile.code);
+        renderFiles();
+
+        // New file button
+        newFileBtn.addEventListener('click', () => {
+            flushEditorToState();
+            const newFile = { id: uid(), name: `script_${state.files.length + 1}.py`, code: '# New file\n' };
+            state.files.push(newFile);
+            state.activeId = newFile.id;
+            editor.setValue(newFile.code);
+            editor.focus();
+            saveStorage();
+            renderFiles();
+            // Auto-open rename for new file
+            const newItem = filesList.querySelector(`[data-id="${newFile.id}"] .file-item-name`);
+            if (newItem) startRename(newFile, newItem);
+        });
+
+        // ── Save button ──
+        saveBtn.addEventListener('click', () => {
+            const f = activeFile();
+            const blob = new Blob([editor.getValue()], { type: 'text/plain' });
+            const url  = URL.createObjectURL(blob);
+            const a    = document.createElement('a');
+            a.href     = url;
+            a.download = f ? f.name : 'script.py';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        // ── Export all files ──
+        document.getElementById('export-btn').addEventListener('click', () => {
+            flushEditorToState();
+            const json = JSON.stringify(state, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url  = URL.createObjectURL(blob);
+            const a    = document.createElement('a');
+            a.href     = url;
+            a.download = 'py_playground_export.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        // ── Import files ──
+        const importInput = document.getElementById('import-input');
+        document.getElementById('import-btn').addEventListener('click', () => importInput.click());
+        importInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const imported = JSON.parse(ev.target.result);
+                    if (!imported.files || !Array.isArray(imported.files)) throw new Error('Invalid format');
+                    if (!confirm(`Import ${imported.files.length} file(s)? This will replace your current workspace.`)) return;
+                    state = imported;
+                    if (!state.files.find(f => f.id === state.activeId)) state.activeId = state.files[0].id;
+                    const f = activeFile();
+                    if (f) editor.setValue(f.code);
+                    saveStorage();
+                    renderFiles();
+                } catch(err) {
+                    alert('Import failed: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+            importInput.value = '';
+        });
+
+        // ── Console helpers ──
+        function clearConsole() { consoleOut.innerHTML = ''; }
+
+        // ANSI color palettes
+        const ANSI_FG = {
+            '30': '#4d4d4d', '31': '#cc0000', '32': '#00cc00', '33': '#cccc00',
+            '34': '#4d9cff', '35': '#cc00cc', '36': '#00cccc', '37': '#e5e5e5',
+            '90': '#808080', '91': '#ff5555', '92': '#55ff55', '93': '#ffff55',
+            '94': '#6699ff', '95': '#ff55ff', '96': '#55ffff', '97': '#ffffff',
+        };
+        const ANSI_BG = {
+            '40': '#1a1a1a', '41': '#cc0000', '42': '#00aa00', '43': '#aaaa00',
+            '44': '#2255cc', '45': '#aa00aa', '46': '#00aaaa', '47': '#cccccc',
+            '100': '#555555', '101': '#ff5555', '102': '#55ff55', '103': '#ffff55',
+            '104': '#6699ff', '105': '#ff55ff', '106': '#55ffff', '107': '#ffffff',
+        };
+
+        function ansiToNodes(text) {
+            const frag = document.createDocumentFragment();
+            const parts = text.split(/(\x1b\[[0-9;]*m)/);
+            let state = { fg: null, bg: null, bold: false };
+            for (const part of parts) {
+                const m = part.match(/^\x1b\[([0-9;]*)m$/);
+                if (m) {
+                    for (const code of m[1].split(';')) {
+                        if (code === '0' || code === '00' || code === '') {
+                            state = { fg: null, bg: null, bold: false };
+                        } else if (code === '1') {
+                            state.bold = true;
+                        } else if (code === '22') {
+                            state.bold = false;
+                        } else if (ANSI_FG[code]) {
+                            state.fg = ANSI_FG[code];
+                        } else if (ANSI_BG[code]) {
+                            state.bg = ANSI_BG[code];
+                        }
+                    }
+                } else if (part) {
+                    const node = document.createTextNode(part);
+                    if (state.fg || state.bg || state.bold) {
+                        const s = document.createElement('span');
+                        if (state.fg) s.style.color = state.fg;
+                        if (state.bg) s.style.backgroundColor = state.bg;
+                        if (state.bold) s.style.fontWeight = 'bold';
+                        s.appendChild(node);
+                        frag.appendChild(s);
+                    } else {
+                        frag.appendChild(node);
+                    }
+                }
+            }
+            return frag;
+        }
+
+        function appendText(text, color) {
+            const line = document.createElement('span');
+            if (color) {
+                line.style.color = color;
+                line.textContent = text + '\n';
+            } else {
+                line.appendChild(ansiToNodes(text + '\n'));
+            }
+            consoleOut.appendChild(line);
+            consoleOut.scrollTop = consoleOut.scrollHeight;
+        }
+
+        function appendImage(b64) {
+            const img = document.createElement('img');
+            img.src = 'data:image/png;base64,' + b64;
+            img.style.cssText = 'max-width:100%; display:block; margin:10px 0; border-radius:6px;';
+            consoleOut.appendChild(img);
+            consoleOut.scrollTop = consoleOut.scrollHeight;
+        }
+
+        // ── Worker / execution ──
+        let pyodideWorker = null;
+        let timeoutTracker = null;
+        let startTime = 0;
+        let preserveOutput = false;
+        const MAX_EXECUTION_TIME = 10000;
+
+        function setupWorker() {
+            runBtn.disabled = true;
+            runBtn.innerHTML = "Loading...";
+
+            const workerString = document.getElementById('worker-code').textContent;
+            const blob      = new Blob([workerString], { type: "text/javascript" });
+            const workerUrl = URL.createObjectURL(blob);
+            pyodideWorker   = new Worker(workerUrl);
+
+            pyodideWorker.onmessage = (event) => {
+                const { type, payload, memoryBytes } = event.data;
+
+                if (type === "READY") {
+                    runBtn.disabled = false;
+                    runBtn.innerHTML = "&#x25B6; Run";
+                    if (!preserveOutput) {
+                        clearConsole();
+                        appendText('Ready.');
+                    }
+                    preserveOutput = false;
+                } else if (type === "PRINT") {
+                    appendText(payload);
+                } else if (type === "IMAGE") {
+                    appendImage(payload);
+                } else {
+                    clearTimeout(timeoutTracker);
+                    const duration = (performance.now() - startTime).toFixed(2);
+                    if (type === "OUTPUT") {
+                        const memoryMB = (memoryBytes / (1024 * 1024)).toFixed(2);
+                        metricsPanel.textContent = `Time: ${duration}ms  |  Memory: ${memoryMB} MB`;
+                        if (!consoleOut.hasChildNodes()) appendText('(no output)');
+                    } else if (type === "ERROR") {
+                        metricsPanel.textContent = `Failed after ${duration}ms`;
+                        appendText('\n' + payload, '#f38ba8');
+                    }
+                }
+            };
+        }
+
+        runBtn.addEventListener('click', () => {
+            flushEditorToState();
+            saveStorage();
+            clearConsole();
+            appendText('Running...');
+            metricsPanel.textContent = "";
+            startTime = performance.now();
+
+            pyodideWorker.postMessage({ type: "RUN_CODE", code: editor.getValue() });
+
+            timeoutTracker = setTimeout(() => {
+                pyodideWorker.terminate();
+                appendText(`\n\u23f1 Timed out: exceeded ${MAX_EXECUTION_TIME / 1000}s limit.`, '#f38ba8');
+                metricsPanel.textContent = "";
+                preserveOutput = true;
+                setupWorker();
+            }, MAX_EXECUTION_TIME);
+        });
+
+        setupWorker();
+    </script>
+</body>
+</html>
