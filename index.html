@@ -506,7 +506,7 @@ except Exception:
             let entries;
             try { entries = pyodide.FS.readdir(absPath); } catch(e) { return items; }
             for (const f of entries) {
-                if (f === '.' || f === '..') continue;
+                if (f === '.' || f === '..' || f.startsWith('.')) continue;
                 const fullAbs = absPath + '/' + f;
                 const rel = relPath ? relPath + '/' + f : f;
                 try {
