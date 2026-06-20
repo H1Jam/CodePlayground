@@ -270,7 +270,7 @@
 
         /* ── Virtual File System panel ── */
         .vfs-panel {
-            flex: 2;
+            flex: 1.5;
             display: flex;
             flex-direction: column;
             border-top: 2px solid #313244;
@@ -367,6 +367,91 @@
         .vfs-dl-btn:hover { background: #313244; }
         .vfs-del-btn { color: #f38ba8; }
         .vfs-del-btn:hover { background: #313244; }
+
+        /* ── Package installer panel ── */
+        .pip-panel {
+            flex: 0 0 auto;
+            display: flex;
+            flex-direction: column;
+            border-top: 2px solid #313244;
+            background: #181825;
+            overflow: hidden;
+        }
+
+        .pip-header {
+            display: flex;
+            align-items: center;
+            padding: 5px 14px;
+            border-bottom: 1px solid #313244;
+            flex-shrink: 0;
+        }
+
+        .pip-label {
+            font-size: 11px;
+            font-family: monospace;
+            color: #6c7086;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            flex: 1;
+        }
+
+        .pip-install-row {
+            display: flex;
+            align-items: center;
+            padding: 5px 8px;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        #pip-input {
+            flex: 1;
+            background: #11111b;
+            border: 1px solid #313244;
+            color: #cdd6f4;
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            font-size: 12px;
+            padding: 3px 7px;
+            border-radius: 4px;
+            outline: none;
+            min-width: 0;
+        }
+        #pip-input:focus { border-color: #89b4fa; }
+        #pip-input::placeholder { color: #45475a; }
+
+        #pip-install-btn {
+            background: #a6e3a1;
+            color: #1e1e2e;
+            padding: 3px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        #pip-install-btn:hover:not(:disabled) { background: #8fd08a; }
+        #pip-install-btn:disabled { background: #45475a; color: #6c7086; cursor: not-allowed; }
+
+        .pip-pkg-list {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            padding: 4px 8px 6px;
+            align-content: flex-start;
+        }
+
+        .pip-tag {
+            font-size: 11px;
+            font-family: monospace;
+            padding: 2px 8px;
+            border-radius: 10px;
+            white-space: nowrap;
+        }
+        .pip-tag.built-in  { background: #1e3a5f; color: #89b4fa; }
+        .pip-tag.installed { background: #1e3a2a; color: #a6e3a1; }
+        .pip-tag.failed    { background: #3d1e24; color: #f38ba8; cursor: help; }
     </style>
 </head>
 <body>
@@ -408,6 +493,17 @@
             <div class="pane-label">console output</div>
             <div id="console" class="terminal">Loading Python + matplotlib + numpy + requests...</div>
             <div id="metrics-panel" class="meta-bar"></div>
+            <!-- Package installer panel -->
+            <div class="pip-panel">
+                <div class="pip-header">
+                    <span class="pip-label">Packages</span>
+                </div>
+                <div class="pip-install-row">
+                    <input type="text" id="pip-input" placeholder="e.g. pandas;scipy;pillow" autocomplete="off">
+                    <button id="pip-install-btn" disabled>Install</button>
+                </div>
+                <div class="pip-pkg-list" id="pip-pkg-list"></div>
+            </div>
             <!-- Virtual File System panel -->
             <div class="vfs-panel">
                 <div class="vfs-header">
@@ -428,6 +524,7 @@
         importScripts("https://cdn.jsdelivr.net/pyodide/v0.26.0/full/pyodide.js");
 
         let pyodide;
+        let micropip;
 
         // Injected before every user script: hooks plt.show() to capture figures
         const PLOT_SETUP = `
@@ -476,7 +573,7 @@ except Exception:
             });
             await pyodide.loadPackage(['matplotlib', 'numpy']);
             await pyodide.loadPackage('micropip');
-            const micropip = pyodide.pyimport('micropip');
+            micropip = pyodide.pyimport('micropip');
             await micropip.install('requests');
             self.postMessage({ type: "READY" });
         }
@@ -602,6 +699,19 @@ except Exception:
                 } catch(e) {
                     self.postMessage({ type: "FS_ERROR", payload: e.message });
                 }
+            } else if (type === "INSTALL_PACKAGES") {
+                const pkgs = event.data.packages;
+                const results = [];
+                for (const pkg of pkgs) {
+                    if (!pkg) continue;
+                    try {
+                        await micropip.install(pkg);
+                        results.push({ name: pkg, success: true });
+                    } catch(e) {
+                        results.push({ name: pkg, success: false, error: e.message });
+                    }
+                }
+                self.postMessage({ type: "PKG_RESULTS", payload: results });
             }
         };
     </script>
@@ -949,6 +1059,7 @@ except Exception:
                 if (type === "READY") {
                     runBtn.disabled = false;
                     runBtn.innerHTML = "&#x25B6; Run";
+                    pipInstallBtn.disabled = false;
                     if (!preserveOutput) {
                         clearConsole();
                         appendText('Ready.');
@@ -960,6 +1071,20 @@ except Exception:
                     appendImage(payload);
                 } else if (type === "FILES_LIST") {
                     renderVFS(event.data.payload);
+                } else if (type === "PKG_RESULTS") {
+                    for (const res of event.data.payload) {
+                        const existing = installedPkgs.find(p => p.name === res.name);
+                        if (existing) {
+                            existing.type = res.success ? 'installed' : 'failed';
+                            if (!res.success) existing.error = res.error;
+                        } else {
+                            installedPkgs.push({ name: res.name, type: res.success ? 'installed' : 'failed', error: res.error });
+                        }
+                    }
+                    renderPkgList();
+                    pipInstallBtn.disabled = false;
+                    pipInstallBtn.textContent = 'Install';
+                    pipInput.value = '';
                 } else if (type === "FILE_CONTENT") {
                     const blob = new Blob([event.data.payload]);
                     const url = URL.createObjectURL(blob);
@@ -1090,6 +1215,44 @@ except Exception:
                 reader.readAsArrayBuffer(file);
             }
             vfsUploadInput.value = '';
+        });
+
+        // ── Package installer ──
+        const pipInput      = document.getElementById('pip-input');
+        const pipInstallBtn = document.getElementById('pip-install-btn');
+        const pipPkgList    = document.getElementById('pip-pkg-list');
+
+        const installedPkgs = [
+            { name: 'matplotlib', type: 'built-in' },
+            { name: 'numpy',      type: 'built-in' },
+            { name: 'requests',   type: 'built-in' },
+        ];
+
+        function renderPkgList() {
+            pipPkgList.innerHTML = '';
+            for (const pkg of installedPkgs) {
+                const tag = document.createElement('span');
+                tag.className = 'pip-tag ' + pkg.type;
+                tag.textContent = pkg.name;
+                if (pkg.type === 'failed') tag.title = pkg.error || 'Install failed';
+                pipPkgList.appendChild(tag);
+            }
+        }
+
+        renderPkgList();
+
+        pipInstallBtn.addEventListener('click', () => {
+            const raw = pipInput.value.trim();
+            if (!raw) return;
+            const pkgs = raw.split(';').map(s => s.trim()).filter(Boolean);
+            if (pkgs.length === 0) return;
+            pipInstallBtn.disabled = true;
+            pipInstallBtn.textContent = 'Installing...';
+            pyodideWorker.postMessage({ type: "INSTALL_PACKAGES", packages: pkgs });
+        });
+
+        pipInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') pipInstallBtn.click();
         });
 
         setupWorker();
